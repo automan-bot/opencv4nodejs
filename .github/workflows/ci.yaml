@@ -17,9 +17,9 @@ jobs:
     runs-on: ${{matrix.os}}
     steps:
       - name: Set up Git repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
       - name: Set up node
-        uses: actions/setup-node@v2
+        uses: actions/setup-node@v3
         with:
           node-version: ${{matrix.node}}
       - name: Configure msvs version on Windows
@@ -30,6 +30,7 @@ jobs:
           OPENCV4NODEJS_DISABLE_AUTOBUILD: 1
         run: |
           echo installing
+          npm install -g node-gyp
           npm install --unsafe-perm
           echo running tests
           cd ./test

@@ -25,7 +25,9 @@ jobs:
         if: ${{matrix.os == 'windows-2016'}}
         run: npm config set msvs_version 2017
       - name: Install
-        run: npm ci --unsafe-perm
+        run: |
+          npm install -g node-gyp
+          npm ci --unsafe-perm
       - name: Publish prebuild
         shell: bash
         run: npm run prebuild -- -t ${{matrix.target}} -r ${{matrix.runtime}} --include-regex "\.(node|a|so|dylib|lib|dll).*$" -u ${{ secrets.GITHUB_TOKEN }}
@@ -50,7 +52,9 @@ jobs:
         if: ${{matrix.os == 'windows-2016'}}
         run: npm config set msvs_version 2017
       - name: Install
-        run: npm ci --unsafe-perm
+        run: |
+          npm install -g node-gyp
+          npm ci --unsafe-perm
       - name: Publish prebuild
         shell: bash
         run: npm run prebuild -- -t ${{matrix.target}} -r ${{matrix.runtime}} --include-regex "\.(node|a|so|dylib|lib|dll).*$" -u ${{ secrets.GITHUB_TOKEN }}
