@@ -1,6 +1,6 @@
 {
   "name": "opencv4nodejs-prebuilt-cn",
-  "version": "5.3.5",
+  "version": "5.3.6",
   "description": "Asynchronous OpenCV 4.x nodejs bindings with prebuilt binaries for Electron (Node 18), Windows/Linux/macOS.",
   "keywords": [
     "opencv",

@@ -141,29 +141,10 @@ if (isWin) {
 
 log("OpenCV include dir: " + includeDir);
 
-// --- stage runtime DLLs next to the binding (Windows only) --------------
-const releaseDir = path.join(cwd, "build", "Release");
-fs.mkdirSync(releaseDir, { recursive: true });
-
-if (isWin && opencvBinDir) {
-  const dllFiles = fs.readdirSync(opencvBinDir).filter((f) => /\.dll$/i.test(f));
-  const world = libraries.some((l) => /opencv_world/i.test(l));
-  let copied = 0;
-  for (const f of dllFiles) {
-    if (/d\.dll$/i.test(f)) continue; // debug build
-    if (world) {
-      // world build: copy the world dll and the ffmpeg plugin, nothing else
-      if (!/opencv_world|videoio_ffmpeg/i.test(f)) continue;
-    } else if (/^opencv_world/i.test(f)) {
-      continue;
-    }
-    fs.copyFileSync(path.join(opencvBinDir, f), path.join(releaseDir, f));
-    copied++;
-  }
-  log("copied " + copied + " OpenCV dll(s) into build/Release");
-}
-
 // --- run prebuild -------------------------------------------------------
+// The DLLs are staged *after* the build: node-gyp's `clean` step wipes
+// build/Release, so anything copied before it would be deleted again.
+const releaseDir = path.join(cwd, "build", "Release");
 const prebuildBin = require.resolve("prebuild/bin.js");
 const args = [
   prebuildBin,
@@ -173,9 +154,6 @@ const args = [
   "--include-regex=\\.(node|dll|dylib|so)$",
   "--verbose",
 ];
-if (isTag && token) {
-  args.push("-u", token);
-}
 
 // gyp `<!@(...)` output is whitespace/escape parsed; backslash paths from
 // path.join() get mangled, so always feed forward slashes.
@@ -195,7 +173,57 @@ const res = spawnSync(process.execPath, args, {
 if (res.error) fail(res.error.message);
 if (res.status !== 0) fail("prebuild exited with code " + res.status);
 
+// --- stage runtime DLLs and repack (Windows only) -----------------------
+if (isWin && opencvBinDir) {
+  const world = libraries.some((l) => /opencv_world/i.test(l));
+  const dlls = [];
+  for (const f of fs.readdirSync(opencvBinDir)) {
+    if (!/\.dll$/i.test(f)) continue;
+    if (/d\.dll$/i.test(f)) continue; // debug build
+    if (world) {
+      // world build: the world dll and the ffmpeg plugin, nothing else
+      if (!/opencv_world|videoio_ffmpeg/i.test(f)) continue;
+    } else if (/^opencv_world/i.test(f)) {
+      continue;
+    }
+    fs.copyFileSync(path.join(opencvBinDir, f), path.join(releaseDir, f));
+    dlls.push(f);
+  }
+  if (!dlls.length) fail("no OpenCV dll staged from " + opencvBinDir);
+  log("staged " + dlls.length + " OpenCV dll(s) into build/Release");
+
+  // prebuild already wrote a tarball without the DLLs; rebuild it with them.
+  const pkg = require(path.join(cwd, "package.json"));
+  const abi = require("node-abi").getAbi(electronTarget, "electron");
+  const tarName = `${pkg.name}-v${pkg.version}-electron-v${abi}-${process.platform}-${process.arch}.tar.gz`;
+  const tarPath = path.join(cwd, "prebuilds", tarName);
+  const files = ["build/Release/opencv4nodejs.node"].concat(
+    dlls.map((f) => "build/Release/" + f)
+  );
+  // relative paths only: GNU tar treats "D:/..." as a remote host
+  const tarRes = spawnSync(
+    "tar",
+    ["-czf", "prebuilds/" + tarName, "-C", "."].concat(files),
+    { cwd, stdio: "inherit" }
+  );
+  if (tarRes.error || tarRes.status !== 0) {
+    fail("failed to repack " + tarPath);
+  }
+  log("repacked " + tarPath);
+}
+
 for (const f of fs.readdirSync(releaseDir)) {
   const p = path.join(releaseDir, f);
   log("built: " + f + " (" + fs.statSync(p).size + " bytes)");
+}
+
+// --- upload the tarball(s) to the matching GitHub release ---------------
+if (isTag && token) {
+  log("uploading prebuilds to GitHub release");
+  const up = spawnSync(process.execPath, [prebuildBin, "--upload-all=" + token], {
+    cwd,
+    stdio: "inherit",
+  });
+  if (up.error) fail(up.error.message);
+  if (up.status !== 0) fail("prebuild upload exited with code " + up.status);
 }
