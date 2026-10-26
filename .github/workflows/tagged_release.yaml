@@ -69,7 +69,6 @@ jobs:
       - name: Install OpenCV (Linux)
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
           sudo apt-get install -y --no-install-recommends libopencv-dev
           pkg-config --modversion opencv4
           pkg-config --variable=libdir opencv4
