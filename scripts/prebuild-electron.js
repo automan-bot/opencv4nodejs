@@ -60,9 +60,10 @@ if (isWin) {
   opencvLibDir = path.join(x64Dir, toolsetDirs[toolsetDirs.length - 1], "lib");
   opencvBinDir = path.join(path.dirname(opencvLibDir), "bin");
 
+  // ignore debug (*d.lib) libraries shipped next to the release ones
   const libFiles = fs
     .readdirSync(opencvLibDir)
-    .filter((f) => /^opencv_.*\.lib$/i.test(f));
+    .filter((f) => /^opencv_.*\.lib$/i.test(f) && !/d\.lib$/i.test(f));
   if (!libFiles.length) fail("no opencv_*.lib found in " + opencvLibDir);
 
   // Prefer the world library when present: one import lib for every module.
@@ -149,6 +150,7 @@ if (isWin && opencvBinDir) {
   const world = libraries.some((l) => /opencv_world/i.test(l));
   let copied = 0;
   for (const f of dllFiles) {
+    if (/d\.dll$/i.test(f)) continue; // debug build
     if (world) {
       // world build: copy the world dll and the ffmpeg plugin, nothing else
       if (!/opencv_world|videoio_ffmpeg/i.test(f)) continue;
@@ -175,14 +177,18 @@ if (isTag && token) {
   args.push("-u", token);
 }
 
+// gyp `<!@(...)` output is whitespace/escape parsed; backslash paths from
+// path.join() get mangled, so always feed forward slashes.
+const toGypPath = (p) => p.replace(/\\/g, "/");
+
 log("running: node " + args.join(" "));
 const res = spawnSync(process.execPath, args, {
   cwd,
   stdio: "inherit",
   env: Object.assign({}, process.env, {
     OPENCV4NODEJS_DEFINES: defines.join("\n"),
-    OPENCV4NODEJS_INCLUDES: includeDir,
-    OPENCV4NODEJS_LIBRARIES: libraries.join("\n"),
+    OPENCV4NODEJS_INCLUDES: toGypPath(includeDir),
+    OPENCV4NODEJS_LIBRARIES: libraries.map(toGypPath).join("\n"),
   }),
 });
 

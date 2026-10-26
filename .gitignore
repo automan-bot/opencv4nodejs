@@ -13,3 +13,5 @@ data/dnn
 dist
 .DS_Store
 native-node-utils
+
+prebuilds
