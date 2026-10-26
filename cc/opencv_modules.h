@@ -4,6 +4,13 @@
 
 #include <opencv2/opencv_modules.hpp>
 
+// OpenCV >= 4.5.1 moved the classic trackers into cv::legacy and removed
+// cv::TrackerMOSSE; this binding predates that API change, so skip the
+// tracking bindings on those versions instead of failing to compile.
+#if CV_VERSION_GREATER_EQUAL(4, 5, 1)
+#undef HAVE_OPENCV_TRACKING
+#endif
+
 // we do not support DNN module for OpenCV 3.2 and lower
 #if CV_VERSION_LOWER_THAN(3, 3, 0)
 #undef HAVE_OPENCV_DNN
