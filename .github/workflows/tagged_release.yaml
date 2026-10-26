@@ -28,10 +28,6 @@ jobs:
             platform: linux
             arch: x64
             opencv: apt
-          - os: macos-14
-            platform: darwin
-            arch: arm64
-            opencv: brew
     env:
       ELECTRON_TARGET: 25.9.8
       OPENCV_DIR: C:\opencv\opencv\build
@@ -69,17 +65,14 @@ jobs:
       - name: Install OpenCV (Linux)
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get install -y --no-install-recommends libopencv-dev
+          # The runner's default azure.archive.ubuntu.com mirror is very slow
+          # and can serve a stale package index; use the upstream archive.
+          sudo sed -i -E 's#https?://[a-z0-9.]*archive\.ubuntu\.com/ubuntu#http://archive.ubuntu.com/ubuntu#g' \
+            /etc/apt/sources.list /etc/apt/apt-mirrors.txt 2>/dev/null || true
+          sudo apt-get update -o Acquire::Retries=5
+          sudo apt-get install -y --no-install-recommends --fix-missing libopencv-dev
           pkg-config --modversion opencv4
           pkg-config --variable=libdir opencv4
-
-      # -------------------------------------------------------------- macOS
-      - name: Install OpenCV (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew install opencv
-          brew --prefix opencv
-          ls "$(brew --prefix)/lib" | grep -c '^libopencv_'
 
       # ------------------------------------------------------------- build
       - name: Install build dependencies
