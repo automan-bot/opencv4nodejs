@@ -1,4 +1,4 @@
-name: Prebuild Windows x64 (Electron)
+name: Build prebuilds and publish
 
 on:
   workflow_dispatch:
@@ -12,10 +12,31 @@ permissions:
   contents: write
 
 jobs:
-  prebuild-win:
-    runs-on: windows-2022
+  prebuild:
+    name: prebuild (${{ matrix.platform }}-${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            platform: win32
+            arch: x64
+            opencv: "4.1.1"
+          - os: ubuntu-22.04
+            platform: linux
+            arch: x64
+            opencv: apt
+          - os: macos-13
+            platform: darwin
+            arch: x64
+            opencv: brew
+          - os: macos-14
+            platform: darwin
+            arch: arm64
+            opencv: brew
     env:
-      OPENCV_VERSION: 4.1.1
       ELECTRON_TARGET: 25.9.8
       OPENCV_DIR: C:\opencv\opencv\build
     steps:
@@ -27,34 +48,49 @@ jobs:
         with:
           node-version: 18
 
-      - name: Cache OpenCV
+      # ------------------------------------------------------------ Windows
+      - name: Cache OpenCV (Windows)
+        if: runner.os == 'Windows'
         id: opencv-cache
         uses: actions/cache@v4
         with:
           path: C:\opencv
-          key: opencv-${{ env.OPENCV_VERSION }}-vc14_vc15
+          key: opencv-${{ matrix.opencv }}-vc14_vc15
 
-      - name: Install OpenCV ${{ env.OPENCV_VERSION }}
-        if: steps.opencv-cache.outputs.cache-hit != 'true'
+      - name: Install OpenCV (Windows)
+        if: runner.os == 'Windows' && steps.opencv-cache.outputs.cache-hit != 'true'
         shell: pwsh
         run: |
-          $installer = Join-Path $env:RUNNER_TEMP "opencv-$env:OPENCV_VERSION.exe"
+          $version = "${{ matrix.opencv }}"
+          $installer = Join-Path $env:RUNNER_TEMP "opencv-$version.exe"
           curl.exe -L --fail --retry 3 -o "$installer" `
-            "https://github.com/opencv/opencv/releases/download/$env:OPENCV_VERSION/opencv-$env:OPENCV_VERSION-vc14_vc15.exe"
+            "https://github.com/opencv/opencv/releases/download/$version/opencv-$version-vc14_vc15.exe"
           Start-Process -FilePath "$installer" -ArgumentList '-o"C:\opencv"', '-y' -Wait
+          Get-ChildItem "$env:OPENCV_DIR\x64\*\lib" -Filter "opencv_world*.lib" |
+            Select-Object FullName
 
-      - name: Verify OpenCV
-        shell: pwsh
+      # -------------------------------------------------------------- Linux
+      - name: Install OpenCV (Linux)
+        if: runner.os == 'Linux'
         run: |
-          Get-ChildItem "$env:OPENCV_DIR\x64" -Directory | Select-Object FullName
-          Get-ChildItem "$env:OPENCV_DIR\x64\*\lib" -Filter "opencv_world*.lib" | Select-Object FullName
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libopencv-dev
+          pkg-config --modversion opencv4
+          pkg-config --variable=libdir opencv4
 
-      - name: Install dependencies
+      # -------------------------------------------------------------- macOS
+      - name: Install OpenCV (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install opencv
+          brew --prefix opencv
+          ls "$(brew --prefix)/lib" | grep -c '^libopencv_'
+
+      # ------------------------------------------------------------- build
+      - name: Install build dependencies
         run: |
           npm install -g node-gyp
           npm ci --ignore-scripts --unsafe-perm
-          # the lockfile pins prebuild@11/node-abi@2 which predate Electron 25
-          npm install --no-save --package-lock=false prebuild@13.0.1 nan@^2.20.0
 
       - name: Build Electron prebuild
         env:
@@ -62,12 +98,37 @@ jobs:
           IS_TAG: ${{ github.ref_type == 'tag' }}
         run: node scripts/prebuild-electron.js
 
+      - name: List prebuild artifacts
+        shell: bash
+        run: |
+          ls -la build/Release
+          ls -la prebuilds || true
+
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: opencv4nodejs-prebuilt-electron-v116-win32-x64
+          name: prebuild-${{ matrix.platform }}-${{ matrix.arch }}-${{ matrix.opencv }}
           if-no-files-found: error
           path: |
-            build/Release/*.node
-            build/Release/*.dll
+            build/Release/*
             prebuilds/*.tar.gz
+
+  publish-npm:
+    name: publish to npm
+    needs: prebuild
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          registry-url: https://registry.npmjs.org
+
+      - name: Publish
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

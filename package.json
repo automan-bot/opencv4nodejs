@@ -1,7 +1,7 @@
 {
-  "name": "opencv4nodejs-prebuilt",
+  "name": "opencv4nodejs-prebuilt-cn",
   "version": "5.3.5",
-  "description": "Asynchronous OpenCV 4.x nodejs bindings with JavaScript and TypeScript API.",
+  "description": "Asynchronous OpenCV 4.x nodejs bindings with prebuilt binaries for Electron (Node 18), Windows/Linux/macOS.",
   "keywords": [
     "opencv",
     "cv",
@@ -43,10 +43,10 @@
   },
   "gypfile": true,
   "dependencies": {
-    "nan": "^2.15.0",
+    "nan": "^2.20.0",
     "native-node-utils": "^0.2.7",
     "npmlog": "^5.0.1",
-    "prebuild-install": "^6.1.4"
+    "prebuild-install": "^7.1.3"
   },
   "optionalDependencies": {
     "@types/node": ">6"
@@ -58,6 +58,6 @@
     "opencv": "4.1.1-7"
   },
   "devDependencies": {
-    "prebuild": "^11.0.0"
+    "prebuild": "^13.0.1"
   }
 }
