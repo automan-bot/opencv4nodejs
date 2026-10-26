@@ -53,7 +53,8 @@ jobs:
         run: |
           npm install -g node-gyp
           npm ci --ignore-scripts --unsafe-perm
-          npm install --no-save --package-lock=false nan@^2.20.0
+          # the lockfile pins prebuild@11/node-abi@2 which predate Electron 25
+          npm install --no-save --package-lock=false prebuild@13.0.1 nan@^2.20.0
 
       - name: Build Electron prebuild
         env:
