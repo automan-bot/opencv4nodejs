@@ -1,77 +1,72 @@
-name: Create tagged release
+name: Prebuild Windows x64 (Electron)
+
 on:
+  workflow_dispatch:
   push:
+    branches:
+      - master
     tags:
-      - v*.*.*
+      - "v*.*.*"
+
+permissions:
+  contents: write
 
 jobs:
-  prebuild-node:
-    strategy:
-      matrix:
-        os: [ ubuntu-latest, windows-2016, macos-latest ]
-        node: [ 18]
-        task: [ prebuild ]
-        runtime: [ node ]
-        target: [ 18, 20, 21 ]
-    runs-on: ${{matrix.os}}
+  prebuild-win:
+    runs-on: windows-2022
+    env:
+      OPENCV_VERSION: 4.1.1
+      ELECTRON_TARGET: 25.9.8
+      OPENCV_DIR: C:\opencv\opencv\build
     steps:
-      - name: Set up Git repository
-        uses: actions/checkout@v2
-      - name: Set up node
-        uses: actions/setup-node@v2
-        with:
-          node-version: ${{matrix.node}}
-      - name: Configure msvs version on Windows
-        if: ${{matrix.os == 'windows-2016'}}
-        run: npm config set msvs_version 2017
-      - name: Install
-        run: |
-          npm install -g node-gyp
-          npm ci --unsafe-perm
-      - name: Publish prebuild
-        shell: bash
-        run: npm run prebuild -- -t ${{matrix.target}} -r ${{matrix.runtime}} --include-regex "\.(node|a|so|dylib|lib|dll).*$" -u ${{ secrets.GITHUB_TOKEN }}
+      - name: Checkout
+        uses: actions/checkout@v4
 
-  prebuild-electron:
-    strategy:
-      matrix:
-        os: [ ubuntu-latest, windows-2016, macos-latest ]
-        node: [ 18 ]
-        task: [ prebuild ]
-        runtime: [ electron ]
-        target: [ 22, 25, 26, 27 ]
-    runs-on: ${{matrix.os}}
-    steps:
-      - name: Set up Git repository
-        uses: actions/checkout@v2
-      - name: Set up node
-        uses: actions/setup-node@v2
-        with:
-          node-version: ${{matrix.node}}
-      - name: Configure msvs version on Windows
-        if: ${{matrix.os == 'windows-2016'}}
-        run: npm config set msvs_version 2017
-      - name: Install
-        run: |
-          npm install -g node-gyp
-          npm ci --unsafe-perm
-      - name: Publish prebuild
-        shell: bash
-        run: npm run prebuild -- -t ${{matrix.target}} -r ${{matrix.runtime}} --include-regex "\.(node|a|so|dylib|lib|dll).*$" -u ${{ secrets.GITHUB_TOKEN }}
-
-  deploy:
-    needs:
-      - prebuild-node
-      - prebuild-electron
-    runs-on: ubuntu-latest
-    steps:
-      - name: Set up Git repository
-        uses: actions/checkout@v2
-      - name: Set up node
-        uses: actions/setup-node@v2
+      - name: Set up Node
+        uses: actions/setup-node@v4
         with:
           node-version: 18
-      - name: Publish tagged release
-        uses: JS-DevTools/npm-publish@v1
+
+      - name: Cache OpenCV
+        id: opencv-cache
+        uses: actions/cache@v4
         with:
-          token: ${{ secrets.NPM_TOKEN }}
+          path: C:\opencv
+          key: opencv-${{ env.OPENCV_VERSION }}-vc14_vc15
+
+      - name: Install OpenCV ${{ env.OPENCV_VERSION }}
+        if: steps.opencv-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $installer = Join-Path $env:RUNNER_TEMP "opencv-$env:OPENCV_VERSION.exe"
+          curl.exe -L --fail --retry 3 -o "$installer" `
+            "https://github.com/opencv/opencv/releases/download/$env:OPENCV_VERSION/opencv-$env:OPENCV_VERSION-vc14_vc15.exe"
+          Start-Process -FilePath "$installer" -ArgumentList '-o"C:\opencv"', '-y' -Wait
+
+      - name: Verify OpenCV
+        shell: pwsh
+        run: |
+          Get-ChildItem "$env:OPENCV_DIR\x64" -Directory | Select-Object FullName
+          Get-ChildItem "$env:OPENCV_DIR\x64\*\lib" -Filter "opencv_world*.lib" | Select-Object FullName
+
+      - name: Install dependencies
+        run: |
+          npm install -g node-gyp
+          npm ci --ignore-scripts --unsafe-perm
+          npm install --no-save --package-lock=false nan@^2.20.0
+
+      - name: Build Electron prebuild
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          IS_TAG: ${{ github.ref_type == 'tag' }}
+        run: node scripts/prebuild-electron.js
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencv4nodejs-prebuilt-electron-v116-win32-x64
+          if-no-files-found: error
+          path: |
+            build/Release/*.node
+            build/Release/*.dll
+            prebuilds/*.tar.gz

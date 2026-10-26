@@ -24,7 +24,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nut-tree/opencv4nodejs"
+    "url": "git+https://github.com/automan-bot/opencv4nodejs"
   },
   "bugs": {
     "url": "https://github.com/nut-tree/opencv4nodejs/issues"
